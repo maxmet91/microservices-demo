@@ -1,0 +1,90 @@
+{{ define "assets" }}
+{{ template "header" . }}
+
+<main class="container mt-4">
+  <h3>My Assets</h3>
+  <div class="mb-3">
+    <form id="upload-form">
+      <div class="form-group">
+        <label for="file">Upload image</label>
+        <input type="file" id="file" name="file" accept="image/jpeg,image/png" class="form-control" required>
+      </div>
+      <div class="form-group">
+        <label for="text">Optional note</label>
+        <input type="text" id="text" name="text" class="form-control" placeholder="Add a short note (optional)">
+      </div>
+      <button type="submit" class="btn btn-primary">Upload</button>
+    </form>
+  </div>
+
+  <div id="assets-list" class="row"></div>
+</main>
+
+<script>
+const baseUrl = "{{ $.baseUrl }}";
+async function listAssets() {
+  const res = await fetch(`${baseUrl}/api/uas/assets`);
+  const data = await res.json();
+  const el = document.getElementById('assets-list');
+  el.innerHTML = '';
+  (data.assets || []).forEach(a => {
+    const col = document.createElement('div');
+    col.className = 'col-md-3 mb-3';
+    col.innerHTML = `
+      <div class="card">
+        <img class="card-img-top" src="${baseUrl}/api/uas/assets/${a.asset_id}/file" alt="asset"/>
+        <div class="card-body">
+          <small class="text-muted">${a.mime}, ${(a.size_bytes/1024).toFixed(1)} KB</small>
+          <div class="input-group mt-2">
+            <input type="text" class="form-control" id="txt-${a.asset_id}" value="${a.text||''}" placeholder="Add note">
+            <div class="input-group-append">
+              <button class="btn btn-outline-secondary" onclick="saveText('${a.asset_id}')">Save</button>
+            </div>
+          </div>
+          <button class="btn btn-sm btn-danger mt-2" onclick="delAsset('${a.asset_id}')">Delete</button>
+        </div>
+      </div>`;
+    el.appendChild(col);
+  });
+}
+
+async function saveText(id) {
+  const v = document.getElementById('txt-' + id).value;
+  await fetch(`${baseUrl}/api/uas/assets/${id}/text`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text: v})});
+  await listAssets();
+}
+
+async function delAsset(id) {
+  await fetch(`${baseUrl}/api/uas/assets/${id}`, {method:'DELETE'});
+  await listAssets();
+}
+
+async function uploadFlow(file, text) {
+  // 1. allocate
+  const a = await (await fetch(`${baseUrl}/api/uas/uploads`, {method:'POST'})).json();
+  const assetId = a.asset_id;
+  // 2. upload multipart
+  const fd = new FormData();
+  fd.append('file', file);
+  const q = new URLSearchParams({asset_id: assetId});
+  await fetch(`${baseUrl}/api/uas/assets/upload?${q.toString()}`, {method:'POST', body: fd});
+  // 3. finalize
+  await fetch(`${baseUrl}/api/uas/assets/finalize`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({asset_id: assetId, text})});
+}
+
+const form = document.getElementById('upload-form');
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const file = document.getElementById('file').files[0];
+  const text = document.getElementById('text').value || null;
+  if (!file) return;
+  await uploadFlow(file, text);
+  form.reset();
+  await listAssets();
+});
+
+listAssets();
+</script>
+
+{{ template "footer" . }}
+{{ end }}

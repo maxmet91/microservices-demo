@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -494,6 +495,174 @@ func (fe *frontendServer) chatBotHandler(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(Response{Message: response.Content})
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (fe *frontendServer) assetsPageHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	currencies, err := fe.getCurrencies(r.Context())
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve currencies"), http.StatusInternalServerError)
+		return
+	}
+	cart, err := fe.getCart(r.Context(), sessionID(r))
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve cart"), http.StatusInternalServerError)
+		return
+	}
+	if err := templates.ExecuteTemplate(w, "assets", injectCommonTemplateData(r, map[string]interface{}{
+		"show_currency": true,
+		"currencies":    currencies,
+		"cart_size":     cartSize(cart),
+	})); err != nil {
+		log.Println(err)
+	}
+}
+
+// ---- User Assets Service proxy endpoints ----
+// Base helper to build UAS URL
+func (fe *frontendServer) uasURL(pathAndQuery string) string {
+	return fmt.Sprintf("http://%s%s", fe.userAssetsSvcAddr, pathAndQuery)
+}
+
+// GET /api/uas/assets -> proxy to UAS /v1/assets?user_id=<sessionID>
+func (fe *frontendServer) uasListAssetsHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	userID := sessionID(r)
+	q := r.URL.Query()
+	q.Set("user_id", userID)
+	url := fe.uasURL("/v1/assets?" + q.Encode())
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas list failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// POST /api/uas/uploads -> proxy to /v1/uploads
+func (fe *frontendServer) uasAllocateUploadHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	url := fe.uasURL("/v1/uploads")
+	req, _ := http.NewRequest(http.MethodPost, url, nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas allocate failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// POST /api/uas/assets/upload (multipart)
+func (fe *frontendServer) uasUploadFileHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	userID := sessionID(r)
+	// forward multipart body as-is, but ensure user_id is present in query
+	q := r.URL.Query()
+	q.Set("user_id", userID)
+	url := fe.uasURL("/v1/assets/upload?" + q.Encode())
+	req, err := http.NewRequest(http.MethodPost, url, r.Body)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas upload req"), http.StatusInternalServerError)
+		return
+	}
+	req.Header = r.Header.Clone()
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas upload do"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// POST /api/uas/assets/finalize -> inject user_id in body JSON and forward
+func (fe *frontendServer) uasFinalizeHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	userID := sessionID(r)
+	body, _ := ioutil.ReadAll(r.Body)
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "bad json"), http.StatusBadRequest)
+		return
+	}
+	m["user_id"] = userID
+	b2, _ := json.Marshal(m)
+	url := fe.uasURL("/v1/assets/finalize")
+	req, _ := http.NewRequest(http.MethodPost, url, io.NopCloser(strings.NewReader(string(b2))))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas finalize failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// PATCH /api/uas/assets/{asset_id}/text -> proxy body through
+func (fe *frontendServer) uasUpdateTextHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	assetID := mux.Vars(r)["asset_id"]
+	url := fe.uasURL("/v1/assets/" + assetID + "/text")
+	req, _ := http.NewRequest(http.MethodPatch, url, r.Body)
+	req.Header = r.Header.Clone()
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas patch failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// DELETE /api/uas/assets/{asset_id}
+func (fe *frontendServer) uasDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	assetID := mux.Vars(r)["asset_id"]
+	url := fe.uasURL("/v1/assets/" + assetID)
+	req, _ := http.NewRequest(http.MethodDelete, url, nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas delete failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// GET /api/uas/assets/{asset_id}/file -> stream bytes
+func (fe *frontendServer) uasGetFileHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	assetID := mux.Vars(r)["asset_id"]
+	url := fe.uasURL("/v1/assets/" + assetID + "/file")
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "uas get file failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	// propagate content type
+	if ct := res.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
 }
 
 func (fe *frontendServer) setCurrencyHandler(w http.ResponseWriter, r *http.Request) {

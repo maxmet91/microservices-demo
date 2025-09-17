@@ -1,0 +1,32 @@
+# src/frontend/Dockerfile.dev
+# syntax=docker/dockerfile:1.7
+
+FROM golang:1.25.1-alpine AS dev
+WORKDIR /app
+
+# Optional: speed up go builds in dev with BuildKit caches
+RUN --mount=type=cache,target=/var/cache/apk \
+    apk add --no-cache git bash ca-certificates build-base
+
+# Install air (file watcher) and delve (debugger)
+RUN go install github.com/air-verse/air@latest && \
+    go install github.com/go-delve/delve/cmd/dlv@latest
+
+# Pre-warm mod cache (kept as a separate layer for speed)
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go mod download
+
+COPY .air.toml ./
+ENV GOCACHE=/app/tmp/gocache \
+    GOMODCACHE=/app/tmp/gomodcache \
+    TMPDIR=/app/tmp \
+    GOTRACEBACK=single
+COPY . .
+
+RUN addgroup -S appgrp -g 1000 && adduser -S appuser -G appgrp -u 1000 && \
+    chown -R 1000:1000 /app
+USER 1000
+
+CMD ["air", "-c", ".air.toml"]

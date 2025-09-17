@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      # writable tmp for Air builds/restarts
+      volumes:
+        - name: dev-tmp
+          emptyDir: {}
+      containers:
+        - name: server
+          securityContext:
+            readOnlyRootFilesystem: false
+          volumeMounts:
+            - name: dev-tmp
+              mountPath: /app/tmp
+          env:
+          - name: GOCACHE
+            value: /app/tmp/gocache
+          - name: GOMODCACHE
+            value: /app/tmp/gomodcache
+          - name: TMPDIR
+            value: /app/tmp
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi

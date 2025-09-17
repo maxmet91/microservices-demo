@@ -45,6 +45,8 @@ build:
     context: src/frontend
   - image: adservice
     context: src/adservice
+  - image: userassetsservice
+    context: src/userassetsservice
   tagPolicy:
     gitCommit: {}
   local:
@@ -101,6 +103,42 @@ profiles:
   - op: add
     path: /manifests/kustomize/paths/1
     value: kustomize/components/network-policies
+- name: dev-fast
+  patches:
+  # Use the dev Dockerfile for frontend (no scratch)
+  - op: replace
+    path: /build/artifacts/9/context
+    value: src/frontend
+  - op: add
+    path: /build/artifacts/9/docker
+    value:
+      dockerfile: Dockerfile.dev
+  # Turn on sync; do NOT rebuild on change
+  - op: add
+    path: /build/artifacts/9/sync
+    value:
+      manual:
+      - src: "**/*.go"
+        dest: "/app"
+      - src: "templates/**"
+        dest: "/app"          # было /app/templates — меняем!
+      - src: "static/**"
+        dest: "/app"          # было /app/static — меняем!
+      - src: ".air.toml"
+        dest: "/app"          # лучше тоже в /app
+      - src: "go.mod"
+        dest: "/app"
+      - src: "go.sum"
+        dest: "/app"
+  - op: replace
+    path: /manifests/kustomize/paths/0
+    value: kustomize/overlays/dev-fast
+  portForward:
+  - resourceType: service
+    resourceName: frontend        # или frontend-external
+    namespace: default
+    port: 80                      # целевой порт в сервисе
+    localPort: 8080               # локальный порт
 ---
 apiVersion: skaffold/v3
 kind: Config
