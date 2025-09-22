@@ -47,6 +47,8 @@ build:
     context: src/adservice
   - image: userassetsservice
     context: src/userassetsservice
+  - image: agents
+    context: src/agents
   tagPolicy:
     gitCommit: {}
   local:

@@ -27,3 +27,5 @@ pkg/
 release/wi-kubernetes-manifests.yaml
 vendor/
 skaffold.exe
+.copilot/
+src/agents/.env
