@@ -1,13 +1,12 @@
 import asyncio
-from email.mime import image
-import enum
 import time
 import os
+import io
+import logging
 from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
-import io
 from google.adk.events import Event, EventActions
 import httpx
 from pydantic import BaseModel, Field
@@ -28,6 +27,9 @@ from multi_tool_agent.models import Option
 
 APP_NAME = "online_boutique_agents"
 USER_ID = "tester"
+
+logger = logging.getLogger(APP_NAME)
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
 app = FastAPI(title=APP_NAME, version="0.1.0")
 
@@ -101,7 +103,11 @@ async def _run_gateway_turn(session: Session, user_payload: Dict[str, Any]) -> N
         new_message=content,
     )
     async for event in events:
-        print(event.content.parts[0].text) if event.content and event.content.parts else "<no content>"
+        if event.content and event.content.parts:
+            # Log only first part text to avoid overly large logs.
+            logger.debug("Event text: %s", event.content.parts[0].text[:500])
+        else:
+            logger.debug("Event with no content")
         # We could log tool calls / responses here if needed.
         # State changes are persisted in the session service by your tools.
 
@@ -143,14 +149,15 @@ async def _store_product_and_assets_as_artifacts(session: Session, req: Discover
                                                 filename=product_artifact_name,
                                                 artifact=product_image_artifact)
             state_changes["product_image"] = "{artifact." + product_artifact_name + "}"
-            print(f"Product image saved as ADK artifact: {product_artifact_name}")
+            logger.info("Saved product image artifact: %s", product_artifact_name)
     except Exception as e:
-        raise HTTPException(400, f"Failed to fetch product image: {e}")
+        logger.exception("Failed to fetch product image")
+        raise HTTPException(400, f"Failed to fetch product image: {e}") from e
    
                 
 
     # User assets: fetch binary data if URL is local HTTP endpoint
-    print(req.assets)
+    logger.debug("User assets count=%d", len(req.assets))
     for i, asset in enumerate(req.assets, start=1):
         try:
             async with httpx.AsyncClient(timeout=20) as client:
@@ -167,9 +174,10 @@ async def _store_product_and_assets_as_artifacts(session: Session, req: Discover
                                                     filename=asset_artifact_name,
                                                     artifact=asset_artifact)
                 state_changes[f"asset_image_{i}"] = "{artifact." + asset_artifact_name + "}"
-                print(asset_artifact_name)
+                logger.info("Saved user asset artifact: %s", asset_artifact_name)
         except Exception as e:
-            raise HTTPException(400, f"Failed to fetch asset {asset.id} from {asset.url}: {e}")
+            logger.exception("Failed to fetch asset %s from %s", asset.id, asset.url)
+            raise HTTPException(400, f"Failed to fetch asset {asset.id} from {asset.url}: {e}") from e
 
         state_changes[f"asset_description_{i}"] = asset.description or ""
         
@@ -190,14 +198,19 @@ async def _store_product_and_assets_as_artifacts(session: Session, req: Discover
 
     # --- Append the Event (This updates the state) ---
     await _session_service.append_event(session, system_event)
-    print("`append_event` called with explicit state delta.")
+    logger.debug("append_event called with explicit state delta")
 
     # --- Check Updated State ---
-    updated_session: Session = await _session_service.get_session(app_name=APP_NAME,
-                                                user_id=USER_ID,
-                                                session_id=session.id)
-    print(f"State after INIT: {updated_session.state}")
-    print(f"Artifacts after INIT: {await _artifacts_service.list_artifact_keys(app_name=APP_NAME, user_id=USER_ID, session_id=session.id)}")
+    updated_session: Session = await _session_service.get_session(
+        app_name=APP_NAME, user_id=USER_ID, session_id=session.id
+    )
+    logger.debug("State after INIT: %s", updated_session.state)
+    logger.debug(
+        "Artifacts after INIT: %s",
+        await _artifacts_service.list_artifact_keys(
+            app_name=APP_NAME, user_id=USER_ID, session_id=session.id
+        ),
+    )
         
     return updated_session
 
@@ -221,7 +234,7 @@ async def discover(req: DiscoverRequest):
     for k, v in session.state.items():
         discover_text += f"- {k}: {v}\n"
     
-    print("Discover text:", discover_text)
+    logger.debug("Discover text: %s", discover_text[:1000])
 
     await _run_gateway_turn(
         session,
@@ -233,9 +246,9 @@ async def discover(req: DiscoverRequest):
                                                 session_id=session.id)
 
     state = session.state or {}
-    print("Gateway state:", state)
+    logger.debug("Gateway state: %s", state)
     options: List[Option] = state.get("options") or []
-    print("Routing options:", options)
+    logger.debug("Routing options: %s", options)
 
     return DiscoverResponse(session_id=session.id, options=options)
 
@@ -258,7 +271,7 @@ async def execute(req: ExecuteRequest):
     for k, v in session.state.items():
         execute_text += f"- {k}: {v}\n"
         
-    print("Execute text:", execute_text)
+    logger.debug("Execute text: %s", execute_text[:1000])
 
     await _run_gateway_turn(
         session,
@@ -270,7 +283,7 @@ async def execute(req: ExecuteRequest):
                                                 user_id=USER_ID,
                                                 session_id=req.session_id)
     state = session.state
-    print(state)
+    logger.debug("Session state after execute: %s", state)
     
     # If image generation tool stored output_image (artifact filename)
     output_image = state.get("output_image") if state else None
@@ -293,7 +306,7 @@ async def execute(req: ExecuteRequest):
                 if os.path.exists(output_image):
                     images.append(f"/artifacts/{output_image}")
         except Exception as e:
-            print(f"Failed to load artifact '{output_image}' from service: {e}")
+            logger.exception("Failed to load artifact '%s' from service", output_image)
             # Try disk as last resort
             if os.path.exists(output_image):
                 images.append(f"/artifacts/{output_image}")
@@ -346,8 +359,8 @@ async def get_artifact(filename: str, session_id: Optional[str] = None):
                 data, mime = _extract_part_bytes(part)
                 if data:
                     return StreamingResponse(io.BytesIO(data), media_type=mime)
-        except Exception as e:
-            print(f"Artifact service load failed for {filename} / {session_id}: {e}")
+        except Exception:
+            logger.exception("Artifact service load failed for %s / %s", filename, session_id)
 
     # Fallback to disk (legacy behavior)
     if os.path.exists(filename):
