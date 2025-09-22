@@ -665,6 +665,85 @@ func (fe *frontendServer) uasGetFileHandler(w http.ResponseWriter, r *http.Reque
 	io.Copy(w, res.Body)
 }
 
+// ---- Agents Service proxy endpoints ----
+// POST /api/agents/discover -> proxy to agents /discover
+func (fe *frontendServer) agentsDiscoverHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	url := fmt.Sprintf("http://%s/discover", fe.agentsSvcAddr)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "read body failed"), http.StatusBadRequest)
+		return
+	}
+	req, _ := http.NewRequest(http.MethodPost, url, strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "agents discover failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// POST /api/agents/execute -> proxy to agents /execute
+func (fe *frontendServer) agentsExecuteHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	url := fmt.Sprintf("http://%s/execute", fe.agentsSvcAddr)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "read body failed"), http.StatusBadRequest)
+		return
+	}
+	req, _ := http.NewRequest(http.MethodPost, url, strings.NewReader(string(body)))
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "agents execute failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
+// NOTE: Ensure this handler is wired in router setup (where other /api/agents routes are added):
+// r.PathPrefix("/api/agents/artifacts/{filename}").HandlerFunc(fe.agentsArtifactHandler).Methods("GET")
+
+// GET /api/agents/artifacts/{filename} -> proxy to agents /artifacts/{filename}
+func (fe *frontendServer) agentsArtifactHandler(w http.ResponseWriter, r *http.Request) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
+	vars := mux.Vars(r)
+	filename := vars["filename"]
+	if filename == "" {
+		renderHTTPError(log, r, w, errors.New("missing filename"), http.StatusBadRequest)
+		return
+	}
+	q := r.URL.Query()
+	// Allow session_id passthrough if provided
+	sessionIDParam := q.Get("session_id")
+	queryStr := ""
+	if sessionIDParam != "" {
+		queryStr = "?session_id=" + sessionIDParam
+	}
+	url := fmt.Sprintf("http://%s/artifacts/%s%s", fe.agentsSvcAddr, filename, queryStr)
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "agents artifact failed"), http.StatusBadGateway)
+		return
+	}
+	defer res.Body.Close()
+	if ct := res.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.WriteHeader(res.StatusCode)
+	io.Copy(w, res.Body)
+}
+
 func (fe *frontendServer) setCurrencyHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	cur := r.FormValue("currency_code")

@@ -23,7 +23,7 @@ Your task flow:
 
 stylist_executor_agent = Agent(
     name="stylist_executor_agent",
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     description=(
         "Agent to make try-ons of product and user's photos."
     ),

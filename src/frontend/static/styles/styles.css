@@ -675,3 +675,126 @@ the rules below could be extracted.
   width: 10px;
   height: 5px;
 }
+
+/* ---------------- AI Helper (Product Page)  ---------------- */
+#ai-helper { position: relative; margin-bottom: 24px; padding-bottom: 8px; }
+
+.ai-inline-spinner { 
+  display: inline-flex; 
+  width: 20px; 
+  height: 20px; 
+  border: 3px solid rgba(206,6,49,0.25); 
+  border-top-color: #CE0631; 
+  border-radius: 50%; 
+  animation: ai-spin 0.8s linear infinite; 
+  vertical-align: middle; 
+  margin-left: 6px; 
+}
+
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+
+#ai-options { 
+  display: none; 
+  margin-top: 12px; 
+}
+
+#ai-options button { 
+  font-size: 12px; 
+  padding: 6px 12px; 
+}
+
+#ai-status { min-height: 20px; }
+
+#ai-gallery { 
+  display:none; 
+  margin-top: 28px; 
+}
+
+#ai-gallery h5 { 
+  font-size: 16px; 
+  font-weight: 600; 
+  margin-bottom: 12px; 
+}
+
+#ai-images { 
+  display: grid; 
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px; 
+}
+
+.ai-image-card { 
+  background: #fff; 
+  border: 1px solid #eee; 
+  border-radius: 12px; 
+  padding: 8px; 
+  box-shadow: 0 2px 4px rgba(0,0,0,0.06); 
+  position: relative; 
+  overflow: hidden; 
+  transition: box-shadow .2s ease; 
+}
+
+.ai-image-card:hover { box-shadow: 0 4px 10px rgba(0,0,0,0.12); }
+
+.ai-image-card img { 
+  width: 100%; 
+  height: auto; 
+  border-radius: 8px; 
+  display: block; 
+}
+
+/* Square preview mode (half product image size set via --ai-preview-size) */
+#ai-images.ai-square { display:flex; flex-wrap:wrap; gap:12px; }
+#ai-images.ai-square .ai-image-card { 
+  width: var(--ai-preview-size,260px); 
+  height: var(--ai-preview-size,260px); 
+  aspect-ratio: 1 / 1; 
+  padding:6px; 
+  display:flex; 
+  align-items:center; 
+  justify-content:center; 
+}
+#ai-images.ai-square .ai-image-card img { 
+  width:100%; 
+  height:100%; 
+  object-fit:cover; 
+  border-radius:10px; 
+}
+
+.ai-badge { 
+  position: absolute; 
+  top: 6px; 
+  left: 6px; 
+  background: #CE0631; 
+  color: #fff; 
+  font-size: 10px; 
+  padding: 2px 6px; 
+  border-radius: 10px; 
+  letter-spacing: .5px; 
+}
+
+.ai-error { 
+  color: #7b031d; 
+  font-size: 13px; 
+}
+
+.ai-muted { color: #555; font-size: 12px; }
+
+.ai-option-loading { 
+  display: inline-flex; 
+  align-items: center; 
+  gap: 6px; 
+  font-size: 12px; 
+  padding: 6px 12px; 
+  border-radius: 22px; 
+  border: 1px solid #CE0631; 
+  color: #CE0631; 
+}
+
+#ai-lightbox { animation: ai-fade-in .18s ease; }
+@keyframes ai-fade-in { from { opacity:0; } to { opacity:1; } }
+
+/* Dark theme adjustments (if product page background changes) */
+@media (prefers-color-scheme: dark) { 
+  .ai-image-card { background: #1d1f21; border-color: #333; }
+  .ai-image-card img { border-radius: 8px; }
+}

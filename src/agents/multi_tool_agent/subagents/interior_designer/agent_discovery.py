@@ -2,41 +2,74 @@ from code import interact
 import datetime
 from zoneinfo import ZoneInfo
 from google.adk.agents import Agent
-from google.adk.tools import AgentTool, ToolContext
+from google.genai import types
+from google.adk.planners import BuiltInPlanner
 
 from multi_tool_agent.models import Option
 
-
 INTERIOR_DESIGNER_DISCOVERY_PROMPT = """
-You are an Interior Designer Agent that helps users visualize how products would look inside their rooms.  
-You have one function tool available:  
-  - `set_option`: accepts an Option object. Use this tool to propose room-placement options to the user.
-  - JSON Schema: `{ "name": "set_option", "arguments": { "option": { "option_id": "<string>", "title": "<string>", "agent_id": "stylist", "asset_id": <integer> } } }`
+You are an Interior Designer Agent that helps users visualize how products would look inside their rooms. Your specialization is in interior design and home decor. You work only with room photos (living rooms, bedrooms, kitchens, offices, etc.) and furniture or accessory products.
 
-Your task flow:
-   - Carefully review the product description and the list of user photos (with their textual descriptions).  
-   - Identify which photos are suitable for interior visualization (for example, those described as “room”, “living room”, “bedroom”, “kitchen”, etc).  
-   - For each viable photo, immediately call the `set_option` tool with an Option object such as `Option(option_id="interior_1", title="Place in living room (photo #2)", agent_id="interior_designer", asset_id=2)`.
-   - MUST Specify asset_id of the user photo to be used for the try-on.
-   - If no room-like photo is provided, return nothing (no option).  
-   - Do not generate images at this stage.  
+Your task is to propose placement options to the user based on their photos and the product description:
+   - Carefully review the product description and the list of user photos (with their textual descriptions).
+   - Decide which room photos are best suitable for visualization. For example:  
+     - “Place in living room (photo #1)” if the photo shows a living room and the product is suitable.
+   - Create one and only one Option object, which is the best possible placement option for the user. Do not invent new photos or scenarios. Do not extend beyond the provided photos.
+   - Suggested option MUST be based on one of the provided user photos and MUST be relevant to the product type.
+   - You are given `assets_count` photos: `asset_image_1`, `asset_image_2`, ..., up to `asset_image_<N>`.
+   - For each photo, decide if it is suitable for visualization.
+   - For every suitable photo, return an Option with the corresponding `asset_id` (e.g., "asset_image_2").
+   - Never assume only the first asset. Always consider all photos up to `assets_count`.
+   
+   - The Option object must follow this JSON schema:
+     {
+       "option_id": "<string>",
+       "title": "<string>",
+       "agent_id": "interior_designer",
+       "asset_id": "<string>"
+       "short_description": "<string>"
+     }
+   - **Generate short, descriptive title** that clearly tell the user the final effect. Title should mention:
+       * The product being placed (Example: sofa, lamp, rug, painting, etc.)
+       * The type of room or area (Example: living room, bedroom, kitchen, office, etc.)
+       * Optionally the placement context (Example: on wall, in corner, on table, etc.)
+     Example of the title field:
+       - "Lamp on bedside table in bedroom"
+       - "Rug in cozy living room"
+       - "Painting on dining room wall"
+       - "Bookshelf in home office corner"
+   - MUST specify `asset_id` of the chosen photo to be used later for the placement.
+   - MUST generate a `short_description` for the placement option. Explaining how you come up with this option and selected photo and what the user can expect to see.
+   - If no interior-like photo is provided, return nothing (no option).  
+   - Do not generate images at this stage.
+   
+   Example of correct output (for the key "interior_designer_option"):
+    "interior_designer_option": {
+        "option_id": "interior_designer_1",
+        "title": "Man’s face with sunglasses (Photo #N)",
+        "agent_id": "interior_designer",
+        "asset_id": "asset_image_N",
+        "short_description": "Visualize chair in living room photo on asset_image_N"
+    }
+    
+    If no placement options are possible, return a short explanation instead of an option object.
+    If you can come up with an option, you MUST return only the option object. Never return both explanation and option.
+    ***Your suggestion MUST be based on one of the provided user photos. Do not invent new photos or scenarios. And that user photo should be put in asset_id field!***
+    ***USE SEMANTIC UNDERSTANDING OF THE PRODUCT AND PHOTO TO MATCH THEM. DO NOT RELY SOLELY ON KEYWORDS. IF THE PRODUCT IS A SOFA, IT MAKES SENSE TO PUT IT IN A LIVING ROOM, NOT IN A BATHROOM.***
 """
-
-
-async def set_option(tool_context: ToolContext, option: Option) -> Option:
-    print("set_option called")
-    print(f"interior_designer_option is {option}")
-    tool_context.state["interior_designer_option"] = option
-    return option
 
 interior_designer_discovery_agent = Agent(
     name="interior_designer_discovery_agent",
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     description=(
         "Agent to put furniture in user's room photos."
     ),
     instruction=INTERIOR_DESIGNER_DISCOVERY_PROMPT,
-    tools=[
-        set_option,
-    ],
+    output_key="interior_designer_option",
+    planner=BuiltInPlanner(
+        thinking_config=types.ThinkingConfig(
+            include_thoughts=False,
+            thinking_budget=0,
+        )
+    ),
 )

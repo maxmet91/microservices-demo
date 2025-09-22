@@ -3,7 +3,7 @@
 
 <main class="container mt-4">
   <h3>My Assets</h3>
-  <div class="mb-3">
+  <div class="mb-5" style="margin-bottom:3rem !important;">
     <form id="upload-form">
       <div class="form-group">
         <label for="file">Upload image</label>
@@ -14,6 +14,7 @@
         <input type="text" id="text" name="text" class="form-control" placeholder="Add a short note (optional)">
       </div>
       <button type="submit" class="btn btn-primary">Upload</button>
+      <span id="upload-status" class="ml-3 text-muted" style="font-size:0.85rem"></span>
     </form>
   </div>
 
@@ -49,9 +50,26 @@ async function listAssets() {
 }
 
 async function saveText(id) {
-  const v = document.getElementById('txt-' + id).value;
-  await fetch(`${baseUrl}/api/uas/assets/${id}/text`, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text: v})});
-  await listAssets();
+  const input = document.getElementById('txt-' + id);
+  const v = input.value;
+  const btn = input.parentElement.querySelector('button');
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const res = await fetch(`${baseUrl}/api/uas/assets/${id}/text`, {
+      method:'PATCH',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text: v})
+    });
+    if(!res.ok) throw new Error('Save failed');
+    btn.textContent = 'Saved';
+    setTimeout(()=>{ btn.textContent = original; btn.disabled=false; }, 1200);
+  } catch(e){
+    console.error(e);
+    btn.textContent = 'Error';
+    btn.classList.add('btn-danger');
+    setTimeout(()=>{ btn.textContent = original; btn.classList.remove('btn-danger'); btn.disabled=false; }, 1800);
+  }
 }
 
 async function delAsset(id) {
@@ -78,8 +96,12 @@ form.addEventListener('submit', async (e) => {
   const file = document.getElementById('file').files[0];
   const text = document.getElementById('text').value || null;
   if (!file) return;
+  const status = document.getElementById('upload-status');
+  status.textContent = 'Uploading...';
   await uploadFlow(file, text);
   form.reset();
+  status.textContent = 'Uploaded';
+  setTimeout(()=> status.textContent = '', 1500);
   await listAssets();
 });
 

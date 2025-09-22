@@ -35,6 +35,20 @@
           <p class="product-price">{{ renderMoney $.product.Price }}</p>
           <p>{{ $.product.Item.Description }}</p>
 
+          <div id="ai-helper" 
+               data-product-id="{{$.product.Item.Id}}" 
+               data-product-title="{{$.product.Item.Name}}" 
+               data-product-description="{{$.product.Item.Description}}" 
+               data-product-image="{{ $.baseUrl }}{{$.product.Item.Picture}}">
+            <button id="ai-discover-btn" type="button" class="cymbal-button-secondary" style="margin-top:10px;">Get AI Help</button>
+            <div id="ai-options" class="mt-3" style="display:none;"></div>
+            <div id="ai-status" class="mt-2 text-muted" style="font-size:0.9rem;"></div>
+            <div id="ai-gallery" class="mt-3" style="display:none;">
+              <h5>AI Generated Images</h5>
+              <div id="ai-images" class="d-flex flex-wrap"></div>
+            </div>
+          </div>
+
           {{ if $.packagingInfo }}
           <div class="product-packaging">
             <h3>Packaging</h3>
@@ -83,4 +97,5 @@
 
 </main>
 {{ template "footer" . }}
+<script src="{{ $.baseUrl }}/static/ai/agents.js"></script>
 {{ end }}

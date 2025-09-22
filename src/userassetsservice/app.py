@@ -7,6 +7,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 
 from models import Asset, AllocateUploadResponse, UploadFileResponse, FinalizeRequest
+from pydantic import BaseModel
 from storage import InMemoryMetadataStore, FSFileStore
 import config
 
@@ -70,13 +71,24 @@ def finalize(req: FinalizeRequest) -> dict:
     return out
 
 
+class UpdateTextPayload(BaseModel):
+    text: Optional[str] = None
+
 @app.patch("/v1/assets/{asset_id}/text")
-def update_text(asset_id: str, text: Optional[str] = None) -> dict:
+def update_text(asset_id: str, payload: Optional[UpdateTextPayload] = None, text: Optional[str] = None) -> dict:
+    """Update the text (note) for an asset.
+
+    Accepts either JSON body {"text": "..."} (preferred) or a query parameter ?text=... for backward compatibility.
+    """
     a = meta.get(asset_id)
     if not a:
         raise HTTPException(status_code=404, detail="asset not found")
-    meta.update_text(asset_id, text)
+    # Prefer JSON payload if provided, else fallback to query param.
+    new_text = payload.text if (payload and payload.text is not None) else text
+    meta.update_text(asset_id, new_text)
     a = meta.get(asset_id)
+    if not a:  # Extremely unlikely since we just updated, but guard anyway.
+        raise HTTPException(status_code=404, detail="asset not found after update")
     out = a.to_public()
     out["ui_url"] = f"{config.BASE_URL}/api/uas/assets/{a.asset_id}/file"
     return out

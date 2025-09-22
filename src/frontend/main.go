@@ -87,6 +87,8 @@ type frontendServer struct {
 	shoppingAssistantSvcAddr string
 
 	userAssetsSvcAddr string
+
+	agentsSvcAddr string
 }
 
 func main() {
@@ -139,6 +141,7 @@ func main() {
 	mustMapEnv(&svc.adSvcAddr, "AD_SERVICE_ADDR")
 	mustMapEnv(&svc.shoppingAssistantSvcAddr, "SHOPPING_ASSISTANT_SERVICE_ADDR")
 	mustMapEnv(&svc.userAssetsSvcAddr, "USER_ASSETS_SERVICE_ADDR")
+	mustMapEnv(&svc.agentsSvcAddr, "AGENTS_SERVICE_ADDR")
 
 	mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
 	mustConnGRPC(ctx, &svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
@@ -172,6 +175,11 @@ func main() {
 	r.HandleFunc(baseUrl + "/api/uas/assets/{asset_id}/text", svc.uasUpdateTextHandler).Methods(http.MethodPatch)
 	r.HandleFunc(baseUrl + "/api/uas/assets/{asset_id}", svc.uasDeleteHandler).Methods(http.MethodDelete)
 	r.HandleFunc(baseUrl + "/api/uas/assets/{asset_id}/file", svc.uasGetFileHandler).Methods(http.MethodGet)
+
+	// Agents proxy endpoints
+	r.HandleFunc(baseUrl + "/api/agents/discover", svc.agentsDiscoverHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl + "/api/agents/execute", svc.agentsExecuteHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl + "/api/agents/artifacts/{filename}", svc.agentsArtifactHandler).Methods(http.MethodGet)
 
 	// Assets page
 	r.HandleFunc(baseUrl + "/assets", svc.assetsPageHandler).Methods(http.MethodGet)

@@ -15,15 +15,15 @@ You have one function tool available:
 
 Your task flow:
    - The system will provide the selected option metadata.  
-   - Based on this metadata, compose a clear text instruction describing how to place the product realistically into the chosen room photo.
+   - Based on this metadata, compose a clear text instruction describing how to place the product realistically into the chosen room photo. Try to estimate product size, orientation, lighting, and context.
    - Call the `generate_images` tool with the correct parameters (generated prompt, product image artifact, selected user photo artifacte if available).  
-   - Prompt should be such, that it describes the placement in detail. So that the image generation model can generate a realistic image. Not just put the product next to the furniture, but actually in the room.
+   - Prompt should be such, that it describes the placement in detail. So that the image generation model can generate a realistic image. Not just put the product next to the furniture, but actually in the room. With respect to lighting, shadows, orientation, size, and context.
    - Wait for the tool response and return the artifact.
 """
 
 interior_designer_executor_agent = Agent(
     name="interior_designer_executor_agent",
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     description=(
         "Agent to put furniture in user's room photos."
     ),

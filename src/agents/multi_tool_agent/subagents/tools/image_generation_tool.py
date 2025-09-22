@@ -4,9 +4,7 @@ from google import genai
 from google.genai import types
 from google.adk.tools import ToolContext
 from google.cloud import storage
-from pywin import tools
 from . import config
-from io import BytesIO
 
 
 client = genai.Client(
@@ -15,9 +13,6 @@ client = genai.Client(
 
 
 async def generate_images(tool_context: ToolContext, imagen_prompt: str, product_artifact: str, asset_artifact: str) -> dict:
-
-    print("generate_images called")
-
     try:   
         print(f"generate_images called with prompt: {imagen_prompt}, product_artifact: {product_artifact}, asset_artifact: {asset_artifact}")
          
@@ -44,22 +39,25 @@ async def generate_images(tool_context: ToolContext, imagen_prompt: str, product
                 # Get the image bytes
                 image_bytes = part.inline_data.data
                 counter = str(tool_context.state.get("loop_iteration", 0))
-                artifact_name = f"generated_image_" + counter + ".png"
+                artifact_name = f"generated_image_" + counter + ".jpg"
                 # call save to gcs function
                 if config.GCS_BUCKET_NAME:
                     save_to_gcs(tool_context, image_bytes, artifact_name, counter)
-                    
-                # Save image to local disk
-                output_dir = "."
-                output_path = f"{output_dir}/{artifact_name}"
-                with open(output_path, "wb") as f:
-                    f.write(image_bytes)
-                print(f"Image also saved to disk: {output_path}")
-                tool_context.state["generated_image_local_path_" + counter] = output_path
+                
+                try:    
+                    # Save image to local disk
+                    output_dir = "."
+                    output_path = f"{output_dir}/{artifact_name}"
+                    with open(output_path, "wb") as f:
+                        f.write(image_bytes)
+                    print(f"Image also saved to disk: {output_path}")
+                    tool_context.state["generated_image_local_path_" + counter] = output_path
+                except Exception as e_disk:
+                    print(f"Failed to save image to disk: {e_disk}")
 
                 # Save as ADK artifact (optional, if still needed by other ADK components)
                 report_artifact = types.Part.from_bytes(
-                    data=image_bytes, mime_type="image/png"
+                    data=image_bytes, mime_type="image/jpeg"
                 )
 
                 await tool_context.save_artifact(artifact_name, report_artifact)
@@ -100,7 +98,7 @@ def save_to_gcs(tool_context: ToolContext, image_bytes, filename: str, counter: 
     blob = bucket.blob(gcs_blob_name)
 
     try:
-        blob.upload_from_string(image_bytes, content_type="image/png")
+        blob.upload_from_string(image_bytes, content_type="image/jpeg")
         gcs_uri = f"gs://{bucket_name}/{gcs_blob_name}"
 
         # Store GCS URI in session context

@@ -2,12 +2,15 @@ import asyncio
 from email.mime import image
 import enum
 import time
-from typing import List, Optional, Dict, Any
+import os
+from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
+import io
 from google.adk.events import Event, EventActions
 import httpx
-from pydantic import BaseModel, HttpUrl, Field
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,7 +23,7 @@ from google.genai import types
 
 # Your multi-agent graph (gateway root agent with stylist sub-agent)
 from multi_tool_agent.agent import root_agent
-from multi_tool_agent.models import Option, OptionsList
+from multi_tool_agent.models import Option
 
 
 APP_NAME = "online_boutique_agents"
@@ -44,7 +47,8 @@ _runner = Runner(
 
 class ProductImage(BaseModel):
     id: str
-    url: HttpUrl
+    # Accept relative ("/api/uas/assets/.../file") or absolute http(s) URLs.
+    url: str
 
 class Product(BaseModel):
     title: str
@@ -53,7 +57,8 @@ class Product(BaseModel):
 
 class UserAsset(BaseModel):
     id: str
-    url: HttpUrl
+    # Relative path or absolute URL. Normalized later in _store_product_and_assets_as_artifacts.
+    url: str
     description: Optional[str] = None
 
 class DiscoverRequest(BaseModel):
@@ -64,7 +69,7 @@ class DiscoverRequest(BaseModel):
 
 class DiscoverResponse(BaseModel):
     session_id: str
-    options: OptionsList
+    options: List[Option]
 
 class ExecuteRequest(BaseModel):
     session_id: str
@@ -111,9 +116,20 @@ async def _store_product_and_assets_as_artifacts(session: Session, req: Discover
     state_changes["product_title"] = req.product.title
     state_changes["product_description"] = req.product.description or ""
     
+    frontend_base = os.getenv("FRONTEND_ADDR", "http://frontend:80")
+    def _abs(u: str) -> str:
+        if u.startswith("http://") or u.startswith("https://"):
+            return u
+        # Ensure the URL starts with http:// if not present
+        if not frontend_base.startswith("http://") and not frontend_base.startswith("https://"):
+            frontend_base_with_http = "http://" + frontend_base
+        else:
+            frontend_base_with_http = frontend_base
+        return frontend_base_with_http.rstrip("/") + u
     try:
         async with httpx.AsyncClient(timeout=20) as client:
-            resp = await client.get(str(req.product.image.url))
+            prod_url = _abs(str(req.product.image.url))
+            resp = await client.get(prod_url)
             resp.raise_for_status()
             data = resp.content
             mime = resp.headers.get("content-type", "application/octet-stream")
@@ -129,7 +145,7 @@ async def _store_product_and_assets_as_artifacts(session: Session, req: Discover
             state_changes["product_image"] = "{artifact." + product_artifact_name + "}"
             print(f"Product image saved as ADK artifact: {product_artifact_name}")
     except Exception as e:
-        raise HTTPException(400, f"Failed to fetch asset {asset.id} from {asset.url}: {e}")
+        raise HTTPException(400, f"Failed to fetch product image: {e}")
    
                 
 
@@ -138,23 +154,24 @@ async def _store_product_and_assets_as_artifacts(session: Session, req: Discover
     for i, asset in enumerate(req.assets, start=1):
         try:
             async with httpx.AsyncClient(timeout=20) as client:
-                resp = await client.get(str(asset.url))
+                asset_url = _abs(str(asset.url))
+                resp = await client.get(asset_url)
                 resp.raise_for_status()
                 data = resp.content
                 mime = resp.headers.get("content-type", "application/octet-stream")
-                asset_artifact_name = f"asset_{i}.jpg"
+                asset_artifact_name = f"asset_image_{i}.jpg"
                 asset_artifact = types.Part.from_bytes(data=data, mime_type=mime)
                 await _artifacts_service.save_artifact(app_name = APP_NAME,
                                                     user_id=USER_ID,
                                                     session_id=session.id,
                                                     filename=asset_artifact_name,
                                                     artifact=asset_artifact)
-                state_changes[f"asset_{i}_image"] = "{artifact." + asset_artifact_name + "}"
+                state_changes[f"asset_image_{i}"] = "{artifact." + asset_artifact_name + "}"
                 print(asset_artifact_name)
         except Exception as e:
             raise HTTPException(400, f"Failed to fetch asset {asset.id} from {asset.url}: {e}")
 
-        state_changes[f"asset_{i}_description"] = asset.description or ""
+        state_changes[f"asset_description_{i}"] = asset.description or ""
         
     assets_count = len(req.assets)
     state_changes["assets_count"] = assets_count
@@ -190,11 +207,6 @@ async def _store_product_and_assets_as_artifacts(session: Session, req: Discover
 
 @app.post(path="/discover", response_model=DiscoverResponse)
 async def discover(req: DiscoverRequest):
-    """
-    Starts (or reuses) a session, invokes the gateway agent in DISCOVERY mode,
-    then reads the options your gateway stored in session.state["ga"]["options"].
-    """
-    # session_id = _ensure_session(req.session_id)
     session = await _session_service.create_session(state={}, app_name=APP_NAME, user_id=USER_ID)
     
     session = await _store_product_and_assets_as_artifacts(session, req)
@@ -205,23 +217,10 @@ async def discover(req: DiscoverRequest):
     # Keep it simple/textual; your gateway_agent instruction should parse PHASE and JSON block.
     discover_text = (
         "PHASE: DISCOVERY\n"
-        # "state keys available: " + ", ".join(session.state.keys()) + "\n"
-        # "Please tell what I can do with available context\n"
-        # "Context:\n"
-        # "- Product title: {product_title}\n"
-        # "- Product description: {product_description}\n"
-        # "- Product image: {artifact.product_image.png}\n"
     )
-    
     for k, v in session.state.items():
         discover_text += f"- {k}: {v}\n"
     
-    # for i, asset in enumerate(req.assets, start=1):
-    #     asset_text = "Description: {asset_" + str(i) + "_description}"
-    #     asset_filename = f"asset_{i}.jpg"
-    #     asset_text = asset_text + "\nImage: {artifact." + asset_filename + "}"
-    #     discover_text += f" - Asset {i}:\n" + asset_text + "\n"
-
     print("Discover text:", discover_text)
 
     await _run_gateway_turn(
@@ -233,25 +232,12 @@ async def discover(req: DiscoverRequest):
                                                 user_id=USER_ID,
                                                 session_id=session.id)
 
-    # Read options from session.state (written by your gateway's set_options tool)
     state = session.state or {}
     print("Gateway state:", state)
-    routing: OptionsList = state.get("options", {})
-    print("Routing options:", routing)
-    if not routing:
-        # It's possible discovery failed silently — surface a helpful message
-        raise HTTPException(502, "No options found in session.state['ga']['options'] after discovery")
+    options: List[Option] = state.get("options") or []
+    print("Routing options:", options)
 
-    # options = [
-    #     Option(
-    #         option_id=option.option_id,
-    #         title=option.title,
-    #         agent_id=option.agent_id,
-    #         meta_data=option.meta_data,
-    #     )
-    #     for option in routing.options
-    # ]
-    return DiscoverResponse(session_id=session.id, options=routing)
+    return DiscoverResponse(session_id=session.id, options=options)
 
 
 @app.post("/execute", response_model=ExecuteResult)
@@ -285,34 +271,88 @@ async def execute(req: ExecuteRequest):
                                                 session_id=req.session_id)
     state = session.state
     print(state)
-    # jobs = state.get("jobs", {})
-
-    # # If your execute tool writes last_job_id into ga state you can read it; else try to pick the last one.
-    # last_job_id = state.get("ga", {}).get("last_job_id")
-    # job_payload = {}
-    # if last_job_id and last_job_id in jobs:
-    #     job_payload = jobs[last_job_id]
-    #     job_id = last_job_id
-    # else:
-    #     # fallback: pick any job (last inserted semantics are not guaranteed in dict, but good enough for MVP)
-    #     if jobs:
-    #         job_id, job_payload = next(reversed(jobs.items()))
-    #     else:
-    #         raise HTTPException(502, "No job found in session.state['jobs'] after execute")
-
-    # return ExecuteResult(
-    #     job_id=job_id,
-    #     status=job_payload.get("status", "running"),
-    #     images=job_payload.get("images", []),
-    #     message=job_payload.get("message"),
-    # )
     
+    # If image generation tool stored output_image (artifact filename)
+    output_image = state.get("output_image") if state else None
+    images: List[str] = []
+
+    if output_image:
+        # Try to load from artifact service (preferred)
+        try:
+            part = await _artifacts_service.load_artifact(
+                app_name=APP_NAME,
+                user_id=USER_ID,
+                session_id=req.session_id,
+                filename=output_image,
+            )
+            if part is not None:
+                # Expose via artifacts endpoint using session_id query param
+                images.append(f"/artifacts/{output_image}?session_id={req.session_id}")
+            else:
+                # Fallback: check disk (legacy path)
+                if os.path.exists(output_image):
+                    images.append(f"/artifacts/{output_image}")
+        except Exception as e:
+            print(f"Failed to load artifact '{output_image}' from service: {e}")
+            # Try disk as last resort
+            if os.path.exists(output_image):
+                images.append(f"/artifacts/{output_image}")
+
+    status = "succeeded" if images else "running"
     return ExecuteResult(
         job_id="job_12345",
-        status="succeeded",
-        images=[state.get("image_url", "")],
-        message="Image generated successfully."
+        status=status,
+        images=images,
+        message="Image generated successfully." if images else "No image yet."
     )
+
+
+def _extract_part_bytes(part) -> Tuple[Optional[bytes], str]:
+    """Attempt to extract raw bytes + mime from a google.genai.types.Part instance."""
+    try:
+        if part is None:
+            return None, "application/octet-stream"
+        inline_data = getattr(part, "inline_data", None)
+        if inline_data is not None:
+            data = getattr(inline_data, "data", None)
+            mime = getattr(inline_data, "mime_type", "application/octet-stream")
+            if data:
+                return data, mime
+        data_attr = getattr(part, "data", None)
+        if data_attr is not None:
+            mime = getattr(part, "mime_type", "application/octet-stream")
+            return data_attr, mime
+    except Exception as e:  # pragma: no cover - defensive
+        print(f"Could not extract bytes from part: {e}")
+    return None, "application/octet-stream"
+
+
+@app.get("/artifacts/{filename}")
+async def get_artifact(filename: str, session_id: Optional[str] = None):
+    """
+    Serve an artifact either from the in-memory artifact service (preferred) or disk fallback.
+    session_id is required for in-memory lookup; if omitted we try disk only.
+    """
+    # Try artifact service first if session_id given
+    if session_id:
+        try:
+            part = await _artifacts_service.load_artifact(
+                app_name=APP_NAME,
+                user_id=USER_ID,
+                session_id=session_id,
+                filename=filename,
+            )
+            if part is not None:
+                data, mime = _extract_part_bytes(part)
+                if data:
+                    return StreamingResponse(io.BytesIO(data), media_type=mime)
+        except Exception as e:
+            print(f"Artifact service load failed for {filename} / {session_id}: {e}")
+
+    # Fallback to disk (legacy behavior)
+    if os.path.exists(filename):
+        return FileResponse(filename)
+    raise HTTPException(404, "artifact not found")
 
 
 @app.get("/healthz")

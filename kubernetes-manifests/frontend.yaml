@@ -84,6 +84,8 @@ spec:
             value: "shoppingassistantservice:80"
           - name: USER_ASSETS_SERVICE_ADDR
             value: "userassetsservice:8001"
+          - name: AGENTS_SERVICE_ADDR
+            value: "agents:8002"  
           # # ENV_PLATFORM: One of: local, gcp, aws, azure, onprem, alibaba
           # # When not set, defaults to "local" unless running in GKE, otherwies auto-sets to gcp
           # - name: ENV_PLATFORM
