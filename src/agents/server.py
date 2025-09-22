@@ -105,7 +105,7 @@ async def _run_gateway_turn(session: Session, user_payload: Dict[str, Any]) -> N
     async for event in events:
         if event.content and event.content.parts:
             # Log only first part text to avoid overly large logs.
-            logger.debug("Event text: %s", event.content.parts[0].text[:500])
+            logger.debug("Event text: %s", event.content.parts)
         else:
             logger.debug("Event with no content")
         # We could log tool calls / responses here if needed.
@@ -234,7 +234,7 @@ async def discover(req: DiscoverRequest):
     for k, v in session.state.items():
         discover_text += f"- {k}: {v}\n"
     
-    logger.debug("Discover text: %s", discover_text[:1000])
+    logger.debug("Discover text: %s", discover_text)
 
     await _run_gateway_turn(
         session,
@@ -271,7 +271,7 @@ async def execute(req: ExecuteRequest):
     for k, v in session.state.items():
         execute_text += f"- {k}: {v}\n"
         
-    logger.debug("Execute text: %s", execute_text[:1000])
+    logger.debug("Execute text: %s", execute_text)
 
     await _run_gateway_turn(
         session,
