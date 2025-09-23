@@ -73,7 +73,7 @@ profiles:
   build:
     googleCloudBuild:
       diskSizeGb: 300
-      machineType: N1_HIGHCPU_32
+      machineType: E2_MEDIUM
       timeout: 4000s
 # "debug" profile replaces the default Dockerfile in cartservice with Dockerfile.debug,
 # which enables debugging via skaffold.
@@ -167,7 +167,7 @@ profiles:
   build:
     googleCloudBuild:
       diskSizeGb: 300
-      machineType: N1_HIGHCPU_32
+      machineType: E2_MEDIUM
       timeout: 4000s
 - name: debug
   activation:
