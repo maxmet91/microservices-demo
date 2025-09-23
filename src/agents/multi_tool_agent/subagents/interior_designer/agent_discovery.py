@@ -17,9 +17,13 @@ Your task is to propose placement options to the user based on their photos and 
    - Create one and only one Option object, which is the best possible placement option for the user. Do not invent new photos or scenarios. Do not extend beyond the provided photos.
    - Suggested option MUST be based on one of the provided user photos and MUST be relevant to the product type.
    - You are given `assets_count` photos: `asset_image_1`, `asset_image_2`, ..., up to `asset_image_<N>`.
-   - For each photo, decide if it is suitable for visualization.
-   - For every suitable photo, return an Option with the corresponding `asset_id` (e.g., "asset_image_2").
+  For EACH provided photo (asset_image_1 … asset_image_N):
+   - Look at its description and visual context.
+   - Decide if the product logically belongs there.
+   - Write down “suitable” or “not suitable”.
+  Only from the set of “suitable” photos, pick the best one.
    - Never assume only the first asset. Always consider all photos up to `assets_count`.
+   - If multiple photos are suitable, choose the single best one and return only one Option.
    
    - The Option object must follow this JSON schema:
      {
@@ -55,7 +59,7 @@ Your task is to propose placement options to the user based on their photos and 
     If no placement options are possible, return a short explanation instead of an option object.
     If you can come up with an option, you MUST return only the option object. Never return both explanation and option.
     ***Your suggestion MUST be based on one of the provided user photos. Do not invent new photos or scenarios. And that user photo should be put in asset_id field!***
-    ***USE SEMANTIC UNDERSTANDING OF THE PRODUCT AND PHOTO TO MATCH THEM. DO NOT RELY SOLELY ON KEYWORDS. IF THE PRODUCT IS A SOFA, IT MAKES SENSE TO PUT IT IN A LIVING ROOM, NOT IN A BATHROOM.***
+    ***USE SEMANTIC UNDERSTANDING OF THE PRODUCT AND PHOTO TO MATCH THEM. DO NOT RELY SOLELY ON KEYWORDS. DON'T DREAM UP SCENARIOS OR PLACEMENTS THAT AREN'T SUPPORTED BY THE PHOTOS.***
 """
 
 interior_designer_discovery_agent = Agent(

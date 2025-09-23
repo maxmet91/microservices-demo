@@ -17,8 +17,12 @@ Your task is to propose try-on options to the user based on their photos and the
    - Your suggestion MUST be based on one of the provided user photos. Do not invent new photos or scenarios. Do not extend beyond the provided photos.
    - Suggested option MUST be based on one of the provided user photos and MUST be relevant to the product type.
    - You are given `assets_count` photos: `asset_image_1`, `asset_image_2`, ..., up to `asset_image_<N>`.
+  For EACH provided photo (asset_image_1 … asset_image_N):
+   - Look at its description and visual context.
+   - Decide if the product logically belongs there.
+   - Write down “suitable” or “not suitable”.
+  Only from the set of “suitable” photos, pick the best one.
    - For each photo, decide if it is suitable for visualization.
-   - For every suitable photo, return an Option with the corresponding `asset_id` (e.g., "asset_image_2").
    - Never assume only the first asset. Always consider all photos up to `assets_count`.
    
    - The Option object must follow this JSON schema:
@@ -52,7 +56,7 @@ Your task is to propose try-on options to the user based on their photos and the
     If no try-on options are possible, return a short explanation instead of an option object.
     If you can come up with an option, you MUST return only the option object. Never return both explanation and option.
     ***Your suggestion MUST be based on one of the provided user photos. Do not invent new photos or scenarios. And that user photo should be put in asset_id field!***
-    ***USE SEMANTIC UNDERSTANDING OF THE PRODUCT AND PHOTO TO MATCH THEM. DO NOT RELY SOLELY ON KEYWORDS. IF THE PRODUCT IS A SUNGLASSES, IT MAKES SENSE TO PUT IT ON A PERSON'S FACE, NOT ON THEIR FULL BODY.***
+    ***USE SEMANTIC UNDERSTANDING OF THE PRODUCT AND PHOTO TO MATCH THEM. DO NOT RELY SOLELY ON KEYWORDS. IF THE PRODUCT IS A SUNGLASSES, IT MAKES SENSE TO PUT IT ON A PERSON'S FACE, NOT ON THEIR FULL BODY. DON'T DREAM UP SCENARIOS OR PEOPLE THAT AREN'T SUPPORTED BY THE PHOTOS.***
 """
 
 stylist_discovery_agent = Agent(

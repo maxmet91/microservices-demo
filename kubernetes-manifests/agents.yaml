@@ -38,13 +38,13 @@ spec:
             httpGet:
               path: /healthz
               port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 5
+            initialDelaySeconds: 90
+            periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthz
               port: 8080
-            initialDelaySeconds: 10
+            initialDelaySeconds: 120
             periodSeconds: 10
           env:
             - name: PORT
@@ -59,10 +59,10 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              memory: 512Mi
             limits:
               cpu: 200m
-              memory: 512Mi
+              memory: 1Gi
 ---
 apiVersion: v1
 kind: Service

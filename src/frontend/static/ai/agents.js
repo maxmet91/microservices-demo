@@ -4,6 +4,7 @@
   if(!container) return;
 
   const discoverBtn = document.getElementById('ai-discover-btn');
+  let uploadRedirectBtn = null; // dynamic button if user has no assets
   const optionsDiv = document.getElementById('ai-options');
   const statusDiv = document.getElementById('ai-status');
   const gallery = document.getElementById('ai-gallery');
@@ -42,6 +43,25 @@
       }));
     } catch(e){
       console.warn('Failed to fetch assets', e); return []; }
+  }
+
+  // If user has no assets replace discover button with upload CTA
+  async function prepareInitialState(){
+    if(!discoverBtn) return;
+    const assets = await fetchUserAssets();
+    if(assets.length === 0){
+      // Hide original button & insert upload CTA
+      discoverBtn.style.display='none';
+      uploadRedirectBtn = document.createElement('button');
+      uploadRedirectBtn.type='button';
+      uploadRedirectBtn.className='cymbal-button-secondary';
+      uploadRedirectBtn.textContent='Upload your photos';
+      uploadRedirectBtn.addEventListener('click', ()=>{
+        window.location.href = `${baseUrl}/assets`;
+      });
+      discoverBtn.parentNode.insertBefore(uploadRedirectBtn, discoverBtn);
+      setStatus('Add a few of your photos to let AI personalize previews.');
+    }
   }
 
   function buildDiscoverPayload(assets){
@@ -108,10 +128,8 @@
     } catch(e){
       console.error(e);
       spinner.remove();
-      setStatus('We could not get options for this product and your images.', 'ai-error');
-      // Allow retry by showing the button again
-      discoverBtn.style.display='inline-block';
-      discoverBtn.disabled = false;
+      setStatus('Sorry, we could not prepare AI options for this product. Please try again.', 'ai-error');
+      showRetryButton();
     }
   }
 
@@ -182,12 +200,32 @@
         optionsDiv.style.display='none';
         setStatus('Image generated.');
       } else {
-        setStatus(data.message || 'No image returned.', 'ai-error');
+        setStatus('Sorry, we could not generate a good image for you this time. Please try again or pick a different product.', 'ai-error');
+        showRetryButton();
       }
     } catch(e){
       console.error(e);
       spinner.remove();
-      setStatus('Failed to generate image.', 'ai-error');
+      setStatus('Sorry, image generation failed. Please try again.', 'ai-error');
+      showRetryButton();
+    }
+  }
+
+  function showRetryButton(){
+    // Either reuse original discover button or create a new one labelled 'Try Again'
+    let retryBtn = discoverBtn;
+    if(retryBtn){
+      retryBtn.textContent = 'Try Again';
+      retryBtn.disabled = false;
+      retryBtn.style.display='inline-block';
+    } else if(!uploadRedirectBtn){
+      // if discoverBtn somehow missing create one
+      retryBtn = document.createElement('button');
+      retryBtn.type='button';
+      retryBtn.className='cymbal-button-secondary';
+      retryBtn.textContent='Try Again';
+      retryBtn.addEventListener('click', discover);
+      container.appendChild(retryBtn);
     }
   }
 
@@ -218,4 +256,6 @@
   }
 
   discoverBtn?.addEventListener('click', discover);
+  // prepare initial state (fetch assets & maybe swap button)
+  prepareInitialState();
 })();
