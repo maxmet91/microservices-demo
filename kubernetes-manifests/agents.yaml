@@ -58,10 +58,10 @@ spec:
                   key: GOOGLE_API_KEY
           resources:
             requests:
-              cpu: 250m
+              cpu: 100m
               memory: 256Mi
             limits:
-              cpu: 500m
+              cpu: 200m
               memory: 512Mi
 ---
 apiVersion: v1
